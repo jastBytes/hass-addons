@@ -1,0 +1,3 @@
+[submodule "mediola2mqtt"]
+	path = mediola2mqtt
+	url = git@github.com:andyboeh/mediola2mqtt.git
