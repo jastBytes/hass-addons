@@ -10,9 +10,17 @@ chmod 777 ${USB_DEVICE}
 #sed -i -e "/<serial>/,/<\/serial>/ s|<tty>[0-9a-z\/._A-Z:]\{1,\}</tty>|<tty>$USB_DEVICE</tty>|g" /etc/vcontrold/vcontrold.xml
 vcontrold -x /config/vcontrold.xml -P /var/run/vcontrold.pid
 
+# set env from config
+for s in $(cat /data/options.json | jq -r "to_entries|map(\"\(.key)=\(.value|tostring)\")|.[]"); do
+	echo "export $s"
+	export $s
+done
+
+echo env
+
 status=$?
 pid=$(pidof vcontrold)
-if [ $status -ne 0 ];then
+if [ $status -ne 0 ]; then
 	echo "Failed to start vcontrold"
 fi
 
@@ -20,11 +28,11 @@ if [ $MQTTACTIVE = true ]; then
 	echo "vcontrold gestartet (PID $pid)"
 	echo "MQTT: aktiv (var = $MQTTACTIVE)"
 	echo "Aktualisierungsintervall: $INTERVAL sec"
-        echo "Lese Parameter: $COMMANDS"
-        /config/mqtt_sub.sh
+	echo "Lese Parameter: $COMMANDS"
+	/config/mqtt_sub.sh
 	while sleep $INTERVAL; do
-                vclient -h 127.0.0.1:3002 -c ${COMMANDS} -J -o result.json
-               /config/mqtt_publish.sh
+		vclient -h 127.0.0.1:3002 -c ${COMMANDS} -J -o result.json
+		/config/mqtt_publish.sh
 		if [ -e /var/run/vcontrold.pid ]; then
 			:
 		else

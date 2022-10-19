@@ -28,9 +28,7 @@
             "port": 1803,
             "username": "",
             "password": "",
-            "discovery_prefix": "homeassistant",
-            "topic": "vcontrold",
-            "debug": false
+            "topic": "vcontrold"
         }
     }
 }
