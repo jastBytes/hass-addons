@@ -11,12 +11,15 @@ chmod 777 ${USB_DEVICE}
 vcontrold -x /config/vcontrold.xml -P /var/run/vcontrold.pid
 
 # set env from config
-for s in $(cat /data/options.json | jq -r "to_entries|map(\"\(.key)=\(.value|tostring)\")|.[]"); do
-	echo "export $s"
-	export $s
-done
+CONFIG_PATH=/data/options.json
 
-echo env
+MQTTUSERNAME="$(bashio::config 'mqtt.username')"
+MQTTPASSWORD="$(bashio::config 'mqtt.password')"
+MQTTHOST="$(bashio::config 'mqtt.host')"
+MQTTPORT="$(bashio::config 'mqtt.port')"
+MQTTTOPIC="$(bashio::config 'mqtt.topic')"
+
+export
 
 status=$?
 pid=$(pidof vcontrold)
