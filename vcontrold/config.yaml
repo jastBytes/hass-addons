@@ -1,0 +1,27 @@
+name: vcontrold to MQTT
+description: Homeassistant addon which uses the vcontrold deamon and connect to a Viessmann heating system. To get get the values, the `vclient` tool is used and afterwards published to a mqtt broker.
+version: 0.0.1
+slug: vcontrold2mqtt
+init: false
+arch:
+    - aarch64
+    - amd64
+    - armhf
+    - armv7
+    - i386
+startup: application
+services:
+    - mqtt:need
+boot: auto
+ports:
+    3002/udp: 3002
+map:
+    - config
+options:
+    mqtt:
+        host: ""
+        port: 1803
+        username: ""
+        password: ""
+        topic: vcontrold
+usb: true
