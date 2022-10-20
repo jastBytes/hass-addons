@@ -13,8 +13,6 @@ arch:
 startup: application
 ports:
     3002/udp: 3002
-map:
-    - config
 schema:
     device: device(subsystem=tty)
 options:

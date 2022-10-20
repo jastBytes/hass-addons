@@ -13,4 +13,4 @@ ADD config /etc/vcontrold/
 COPY run.sh /
 RUN chmod a+x /run.sh
 
-ENTRYPOINT ["sh","/run.sh"]
+CMD [ "/run.sh" ]
