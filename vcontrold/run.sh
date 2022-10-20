@@ -10,4 +10,4 @@ chmod 777 ${USB_DEVICE}
 # start vcontrold
 # https://github.com/openv/vcontrold/blob/master/doc/man/vcontrold.rst
 echo "Starting vcontrold..."
-vcontrold -x /config/vcontrold.xml
+vcontrold -x /config/vcontrold.xml --nodaemon
