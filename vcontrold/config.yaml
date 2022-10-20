@@ -1,5 +1,6 @@
 name: vcontrold
 description: Homeassistant addon which uses the vcontrold deamon and connect to a Viessmann heating system. To get get the values, the `vclient` tool is used.
+url: https://github.com/jastBytes/hass-addons/tree/main/vcontrold
 version: 0.0.1
 slug: vcontrold
 init: false
@@ -10,9 +11,13 @@ arch:
     - armv7
     - i386
 startup: application
-boot: auto
 ports:
     3002/udp: 3002
 map:
     - config
+schema:
+    device: device(subsystem=tty)
+options:
+    device: null
 usb: true
+udev: true
