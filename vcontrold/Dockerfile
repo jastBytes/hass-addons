@@ -13,5 +13,4 @@ ADD config /etc/vcontrold/
 COPY run.sh /
 RUN chmod a+x /run.sh
 
-EXPOSE 3002/udp
 ENTRYPOINT ["sh","/run.sh"]
