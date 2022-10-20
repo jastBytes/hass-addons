@@ -1,5 +1,5 @@
-ARG BUILD_FROM=ghcr.io/hassio-addons/base:12.2.4
-FROM ${BUILD_FROM}
+ARG BUILD_FROM
+FROM $BUILD_FROM
 
 RUN apk add --no-cache cmake make libxml2-dev linux-headers mosquitto-clients git jq iputils gcc musl-dev
 

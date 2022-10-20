@@ -1,4 +1,4 @@
-#!/usr/bin/env bashio
+#!/usr/bin/with-contenv bashio
 
 USB_DEVICE=$(bashio::config 'device')
 bashio::log.info "Using usb device ${USB_DEVICE}"
