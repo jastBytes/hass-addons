@@ -11,11 +11,9 @@
     "armv7",
     "i386"
   ],
-  "startup": "application",
   "services": [
     "mqtt:need"
   ],
-  "boot": "auto",
   "ports": {
     "1902/udp": 1902
   },
