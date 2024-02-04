@@ -10,7 +10,6 @@ arch:
     - armhf
     - armv7
     - i386
-startup: application
 ports:
     3002/udp: 3002
 map:
