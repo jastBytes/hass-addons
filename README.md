@@ -6,7 +6,7 @@
 
 This repository contains the following add-ons
 
-### [Example add-on](./mediola2mqtt)
+### [mediola2mqtt add-on](./mediola2mqtt)
 
 ![Supports aarch64 Architecture][aarch64-shield]
 ![Supports amd64 Architecture][amd64-shield]
