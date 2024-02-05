@@ -9,7 +9,6 @@ RUN pip3 install paho-mqtt
 RUN pip3 install requests
 RUN pip3 install PyYAML
 
-ADD config /etc/mediola2mqtt/
 COPY mediola2mqtt.py /
 COPY run.sh /
 RUN chmod a+x /run.sh
