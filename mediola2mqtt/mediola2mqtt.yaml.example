@@ -15,9 +15,20 @@ mqtt:
   topic: mediola
   debug: false
 
+general:
+  # UDP ports the gateways broadcast their status on. A single port or a list,
+  # 1902 is used by the v4/v5 gateways, 1901 by the v6 gateways.
+  port:
+    - 1902
+    - 1901
+  # Query the state of all Elero blinds every n seconds, 0 disables periodic
+  # polling (the states are always queried once at startup).
+  poll_interval: 300
+
 buttons:
   - type: IT
     adr: 3d5e00
+    name: Button Kitchen
     mediola: mediola1
   - type: IT
     adr: 4de600
@@ -28,6 +39,10 @@ blinds:
     adr: 5a25d5
     name: Bad 1
     mediola: mediola1
+    # Travel times in seconds enable position reporting and set_position.
+    # Measure how long the blind needs from fully open to fully closed.
+    travel_time_up: 26
+    travel_time_down: 24
   - type: RT
     adr: 129a3a
     name: Bad 2
@@ -36,6 +51,7 @@ blinds:
     adr: c36a8a
     name: Diele
     mediola: mediola1
+    device_class: shutter
   - type: RT
     adr: f6eba5
     name: Stiegenhaus
@@ -44,6 +60,11 @@ blinds:
     adr: "01"
     name: Essbereich Nord
     mediola: mediola2
+    travel_time_up: 30
+    travel_time_down: 28
+    # Expose the Elero intermediate and ventilation positions as buttons
+    intermediate_position: true
+    ventilation_position: true
   - type: ER
     adr: "02"
     name: Essbereich Süd

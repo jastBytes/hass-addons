@@ -1,6 +1,6 @@
 {
   "name": "Mediola to MQTT",
-  "version": "0.3",
+  "version": "0.4",
   "slug": "mediola2mqtt",
   "init": false,
   "description": "Homeassistant interface to Mediola AIO Gateway v4/v4+",
@@ -15,7 +15,12 @@
     "mqtt:need"
   ],
   "ports": {
-    "1902/udp": 1902
+    "1902/udp": 1902,
+    "1901/udp": 1901
+  },
+  "ports_description": {
+    "1902/udp": "Status broadcasts of the v4/v4+ gateways",
+    "1901/udp": "Status broadcasts of the v6 gateways"
   },
   "map": [
     "config"
@@ -34,6 +39,9 @@
       "topic": "mediola",
       "debug": false
     },
+    "general": {
+      "poll_interval": 0
+    },
     "blinds": [],
     "buttons": []
   },
@@ -51,17 +59,26 @@
       "topic": "str",
       "debug": "bool"
     },
+    "general": {
+      "poll_interval": "int(0,86400)?"
+    },
     "blinds": [
       {
         "type": "match(ER|RT)?",
         "adr": "str?",
-        "name": "str?"
+        "name": "str?",
+        "device_class": "list(awning|blind|curtain|damper|door|garage|gate|shade|shutter|window)?",
+        "travel_time_up": "float?",
+        "travel_time_down": "float?",
+        "intermediate_position": "bool?",
+        "ventilation_position": "bool?"
       }
     ],
     "buttons": [
       {
         "type": "match(IT)?",
-        "adr": "str?"
+        "adr": "str?",
+        "name": "str?"
       }
     ]
   }
