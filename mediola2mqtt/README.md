@@ -27,11 +27,18 @@ this script, create an issue on github.
 
 ## Installation
 
-If you run Home Assistant OS (HassOS), you can run it as an addon. Simply create
-a new folder "mediola2mqtt" in your local "addons" folder and copy the contents
-of the repository there. All configuration is performed within the add-on configuration.
+Add <https://github.com/jastBytes/hass-addons> as an add-on repository to Home
+Assistant (**Settings → Add-ons → Add-on store**, three-dot menu →
+**Repositories**), then install *Mediola to MQTT* from the store. The
+[repository README](../README.md) describes the steps in detail. All
+configuration is performed within the add-on configuration.
 
-If you do not run HassOS, the configuration is done in `mediola2mqtt.yaml`.
+Alternatively, copy this folder into the `addons` folder of your Home Assistant
+configuration to install it as a local add-on.
+
+Without Home Assistant, the script runs standalone (see `mediola2mqtt.service`
+for a systemd unit). The configuration is then read from `mediola2mqtt.yaml` -
+have a look at `mediola2mqtt.yaml.example`.
 
 ## Usage
 
