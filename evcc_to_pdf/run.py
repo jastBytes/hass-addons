@@ -14,11 +14,14 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 
 OPTIONS_FILE = "/data/options.json"
 APP_DIR = "/app"
 SCRIPT = "generate_pdf_report.py"
+
+REPORT_LOCK = threading.Lock()
 
 
 def log(message):
@@ -67,10 +70,16 @@ def build_env(options):
     return env
 
 
-def run_report(env):
-    log("Generating charging report ...")
+def run_report(env, year=None, month=None):
+    cmd = [sys.executable, SCRIPT]
+    period = "the previous month (script default)"
+    if year is not None and month is not None:
+        cmd += ["--year", str(year), "--month", str(month)]
+        period = f"{month:02d}/{year}"
+
+    log(f"Generating charging report for {period} ...")
     result = subprocess.run(
-        [sys.executable, SCRIPT],
+        cmd,
         cwd=APP_DIR,
         env=env,
         stdout=subprocess.PIPE,
@@ -83,6 +92,72 @@ def run_report(env):
         log(f"Report generation failed with exit code {result.returncode}")
     else:
         log("Report generation finished successfully.")
+
+
+def trigger_report(env, year=None, month=None):
+    # Serialize against the scheduled run and other triggers so two
+    # generations never write the same output file at once.
+    with REPORT_LOCK:
+        run_report(env, year=year, month=month)
+
+
+def stdin_listener():
+    """Allow an on-demand run via the add-on's stdin, e.g. from a Home
+    Assistant automation using the hassio.addon_stdin service (requires
+    "stdin": true in config.json). Accepts one command per line:
+
+      generate               -> current month, to date
+      previous                -> previous month (same as the monthly schedule)
+      {"year": 2026, "month": 9} -> an explicit period
+    """
+    while True:
+        raw_line = sys.stdin.readline()
+        if not raw_line:
+            # EOF: stdin isn't attached right now (e.g. no client has sent
+            # anything yet, or a prior hassio.addon_stdin call's connection
+            # was closed). Keep polling instead of exiting the thread, since
+            # the container's stdin can still receive further writes later.
+            time.sleep(1)
+            continue
+
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        log(f"Received stdin trigger: {line!r}")
+        try:
+            options = load_options()
+        except Exception as e:
+            log(f"Could not read options for triggered run: {e}")
+            continue
+
+        year = month = None
+        payload = None
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            pass
+
+        if isinstance(payload, dict):
+            year = payload.get("year")
+            month = payload.get("month")
+        else:
+            command = line.lower()
+            if command in ("generate", "current", "now"):
+                today = datetime.datetime.now()
+                year, month = today.year, today.month
+            elif command == "previous":
+                year = month = None
+            else:
+                log(
+                    f"Unknown stdin command {line!r}; ignoring. "
+                    'Send "generate", "previous", or {"year": Y, "month": M}.'
+                )
+                continue
+
+        threading.Thread(
+            target=trigger_report, args=(build_env(options), year, month), daemon=True
+        ).start()
 
 
 def next_run(day_of_month, hour, now=None):
@@ -107,17 +182,24 @@ def main():
     hour = int(schedule.get("hour", 2))
     run_on_start = bool(schedule.get("run_on_start", False))
 
-    log(f"Scheduled to run monthly on day {day_of_month} at {hour:02d}:00")
+    log(f"Scheduled to run monthly on day {day_of_month} at {hour:02d}:00 (previous month's report)")
+    log(
+        "On-demand trigger: send 'generate' (current month), 'previous', or "
+        '{"year": Y, "month": M} to this add-on\'s stdin, e.g. via the '
+        "hassio.addon_stdin service from a Home Assistant automation."
+    )
+
+    threading.Thread(target=stdin_listener, daemon=True).start()
 
     if run_on_start:
-        run_report(build_env(options))
+        trigger_report(build_env(options))
 
     while True:
         target = next_run(day_of_month, hour)
         delay = max((target - datetime.datetime.now()).total_seconds(), 1)
-        log(f"Next report scheduled for {target.isoformat()} (in {int(delay)}s)")
+        log(f"Next scheduled report at {target.isoformat()} (in {int(delay)}s)")
         time.sleep(delay)
-        run_report(build_env(load_options()))
+        trigger_report(build_env(load_options()))
 
 
 if __name__ == "__main__":
