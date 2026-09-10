@@ -1,3 +1,3 @@
 ---
 build_from:
-  amd64: python:3.11-slim-bookworm
+  amd64: docker.io/library/python:3.11-slim-bookworm
