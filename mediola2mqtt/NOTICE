@@ -1,0 +1,23 @@
+mediola2mqtt add-on
+Copyright (c) 2021 Andreas Böhler
+Copyright (c) 2022- jastBytes and contributors
+
+This add-on is derived from the archived project
+https://github.com/andyboeh/mediola2mqtt by Andreas Böhler, licensed under
+the Apache License, Version 2.0. The following files were copied from that
+project and extended from there (see ../CHANGELOG.md for what changed since):
+
+  mediola2mqtt.py
+  mediolamanager.py
+  adddevice.ui
+  eleromanager.ui
+  mediolamanager.ui
+  mediola2mqtt.yaml.example
+  packaging/arch/PKGBUILD
+  packaging/arch/mediola2mqtt.install
+  packaging/arch/mediola2mqtt.service
+  packaging/arch/mediola2mqtt.sysusers
+
+See the repository-wide LICENSE file for the full text of the Apache
+License, Version 2.0 under which this add-on (including the files above)
+is distributed.
