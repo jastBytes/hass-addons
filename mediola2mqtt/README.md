@@ -147,3 +147,7 @@ and triggering the HTTP API.
 | `<topic>/blinds/<mediola>/<type>_<adr>/set_position` | in | `0` to `100`, only with travel times |
 | `<topic>/blinds/<mediola>/<type>_<adr>/intermediate` | in | Elero intermediate position |
 | `<topic>/blinds/<mediola>/<type>_<adr>/ventilation` | in | Elero ventilation position |
+
+## Changelog
+
+See [CHANGELOG.md](./CHANGELOG.md) for release notes.
