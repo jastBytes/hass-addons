@@ -1,0 +1,26 @@
+name: Feature request
+description: Suggest an idea or a device/gateway to support
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: addon
+    attributes:
+      label: Add-on
+      options:
+        - EVCC to PDF
+        - Mediola to MQTT
+        - Something new / not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: What would you like to happen?

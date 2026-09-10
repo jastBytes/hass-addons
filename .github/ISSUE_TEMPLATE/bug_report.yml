@@ -1,0 +1,45 @@
+name: Bug report
+description: Something isn't working as expected
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: addon
+    attributes:
+      label: Add-on
+      options:
+        - EVCC to PDF
+        - Mediola to MQTT
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Add-on version
+      description: Settings → Add-ons → <add-on> → Info tab
+      placeholder: e.g. 1.1.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect to happen instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Add-on configuration
+      description: >-
+        The Configuration tab's YAML, with secrets (passwords, tokens) redacted.
+      render: yaml
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Add-on logs
+      description: Settings → Add-ons → <add-on> → Log tab
+      render: text

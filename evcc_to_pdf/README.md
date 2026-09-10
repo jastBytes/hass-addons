@@ -138,3 +138,7 @@ Generated PDFs (`ChargingCostSummary_<year>-<month>.pdf`) are written to
 
 Each report run, including any errors from evcc-to-PDF itself, is written to
 the add-on log (**Log** tab).
+
+## Changelog
+
+See [CHANGELOG.md](./CHANGELOG.md) for release notes.

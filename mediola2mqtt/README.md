@@ -1,10 +1,17 @@
 # mediola2mqtt - a mediola MQTT gateway
 
-This is a fork from the archived repository <https://github.com/andyboeh/mediola2mqtt>.
-I would like to thank the creator of the project for their work.
-
 This utility is a simple python script to attach a few components of the
 Mediola AIO gateway to HomeAssistant or other MQTT capable hosts.
+
+## Credit
+
+`mediola2mqtt.py`, `mediolamanager.py`, the `.ui` files and the Arch Linux
+packaging under [`packaging/arch`](./packaging/arch) were copied from
+Andreas Böhler's archived [andyboeh/mediola2mqtt](https://github.com/andyboeh/mediola2mqtt)
+(Apache License 2.0) and extended from there - see
+[NOTICE](./NOTICE) for the full attribution and
+[CHANGELOG.md](./CHANGELOG.md) for what changed since. Thanks to Andreas for
+the original work.
 
 ## Supported gateways
 
@@ -36,9 +43,10 @@ configuration is performed within the add-on configuration.
 Alternatively, copy this folder into the `addons` folder of your Home Assistant
 configuration to install it as a local add-on.
 
-Without Home Assistant, the script runs standalone (see `mediola2mqtt.service`
-for a systemd unit). The configuration is then read from `mediola2mqtt.yaml` -
-have a look at `mediola2mqtt.yaml.example`.
+Without Home Assistant, the script runs standalone (see
+`packaging/arch/mediola2mqtt.service` for a systemd unit). The configuration
+is then read from `mediola2mqtt.yaml` - have a look at
+`mediola2mqtt.yaml.example`.
 
 ## Usage
 
@@ -147,3 +155,7 @@ and triggering the HTTP API.
 | `<topic>/blinds/<mediola>/<type>_<adr>/set_position` | in | `0` to `100`, only with travel times |
 | `<topic>/blinds/<mediola>/<type>_<adr>/intermediate` | in | Elero intermediate position |
 | `<topic>/blinds/<mediola>/<type>_<adr>/ventilation` | in | Elero ventilation position |
+
+## Changelog
+
+See [CHANGELOG.md](./CHANGELOG.md) for release notes.
