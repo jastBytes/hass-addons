@@ -1,6 +1,6 @@
 {
   "name": "Mediola to MQTT",
-  "version": "0.4",
+  "version": "0.4.0",
   "slug": "mediola2mqtt",
   "init": false,
   "description": "Homeassistant interface to Mediola AIO Gateway v4/v4+",

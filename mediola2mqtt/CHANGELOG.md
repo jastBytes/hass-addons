@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0 - 2026-09-10
+
+- Switch version numbering to semver (`major.minor.patch`), matching
+  `evcc_to_pdf` and the rest of the ecosystem. No functional changes.
+
 ## 0.4 - 2026-09-04
 
 ### Added
