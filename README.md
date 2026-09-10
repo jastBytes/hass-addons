@@ -47,4 +47,15 @@ add-on.
 Configuration options are documented in the
 [add-on README](./mediola2mqtt/README.md).
 
+### [EVCC to PDF add-on](./evcc_to_pdf)
+
+![Supports amd64 Architecture][amd64-shield]
+
+Generates a monthly PDF charging cost report from an [evcc](https://evcc.io)
+instance and optionally emails it, using
+[evcc-to-PDF](https://github.com/MaizeShark/evcc-to-PDF).
+
+Configuration options are documented in the
+[add-on README](./evcc_to_pdf/README.md).
+
 [amd64-shield]: https://img.shields.io/badge/amd64-yes-green.svg

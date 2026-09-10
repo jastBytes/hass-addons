@@ -1,0 +1,73 @@
+{
+  "name": "EVCC to PDF",
+  "version": "1.0.0",
+  "slug": "evcc_to_pdf",
+  "description": "Generates monthly EVCC charging cost PDF reports and optionally emails them",
+  "url": "https://github.com/jastBytes/hass-addons/tree/main/evcc_to_pdf",
+  "arch": [
+    "amd64"
+  ],
+  "map": [
+    "share:rw"
+  ],
+  "options": {
+    "evcc": {
+      "url": "http://homeassistant.local:7070",
+      "password": ""
+    },
+    "sender": {
+      "name": "John Doe",
+      "street": "Sample Street 123",
+      "city": "12345 Sample City"
+    },
+    "email": {
+      "enabled": false,
+      "smtp_server": "",
+      "smtp_port": 587,
+      "sender_email": "",
+      "sender_password": "",
+      "recipient_email": ""
+    },
+    "report": {
+      "locale": "de_DE.UTF-8",
+      "pdf_columns": "start_time,end_time,loadpoint,vehicle,energy,duration,price",
+      "filter_vehicles": "",
+      "filter_loadpoints": ""
+    },
+    "schedule": {
+      "day_of_month": 1,
+      "hour": 2,
+      "run_on_start": false
+    }
+  },
+  "schema": {
+    "evcc": {
+      "url": "url",
+      "password": "password"
+    },
+    "sender": {
+      "name": "str",
+      "street": "str",
+      "city": "str"
+    },
+    "email": {
+      "enabled": "bool",
+      "smtp_server": "str?",
+      "smtp_port": "port?",
+      "sender_email": "email?",
+      "sender_password": "password?",
+      "recipient_email": "email?"
+    },
+    "report": {
+      "locale": "str",
+      "pdf_columns": "str?",
+      "filter_vehicles": "str?",
+      "filter_loadpoints": "str?"
+    },
+    "schedule": {
+      "day_of_month": "int(1,28)",
+      "hour": "int(0,23)",
+      "run_on_start": "bool"
+    }
+  }
+}
