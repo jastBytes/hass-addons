@@ -74,8 +74,59 @@ written to disk.
   month is generated. Defaults to the 1st at 02:00, matching the cron example
   from the upstream project.
 * `run_on_start` - Also generate a report immediately whenever the add-on
-  starts (e.g. after an update or restart). Useful to produce a report
-  on-demand: enable this, save, restart the add-on, then disable it again.
+  starts (e.g. after an update or restart).
+
+## Triggering a report on demand (e.g. on the last workday of the month)
+
+The add-on's own `schedule` only understands a fixed day-of-month, and always
+reports the *previous* month - it has no idea about weekends or holidays. If
+you want the report to run on, say, the last workday of the month (which
+Home Assistant can determine via the
+[`workday`](https://www.home-assistant.io/integrations/workday/) integration),
+drive it from a Home Assistant automation instead.
+
+The add-on listens on its own stdin for trigger commands (this requires the
+add-on's *Start on boot*/*Watchdog* page to show the "Terminal"-adjacent
+**stdin** capability is enabled, which it is by default for this add-on).
+Send one of the following as the `input` of the `hassio.addon_stdin` service:
+
+| Input | Effect |
+| --- | --- |
+| `generate` | Report for the **current** month, up to today |
+| `previous` | Report for the previous month (same as the monthly schedule) |
+| `{"year": 2026, "month": 9}` | An explicit period |
+
+Example automation, triggered on the last workday of the month at 18:00:
+
+```yaml
+automation:
+  - alias: "evcc report on last workday of month"
+    trigger:
+      - platform: time
+        at: "18:00:00"
+    condition:
+      # today is the last day of the month...
+      - condition: template
+        value_template: "{{ (now() + timedelta(days=1)).month != now().month }}"
+      # ...and it's a workday (requires the workday integration, configured
+      # with your country/holidays)
+      - condition: state
+        entity_id: binary_sensor.workday_sensor
+        state: "on"
+    action:
+      - service: hassio.addon_stdin
+        data:
+          addon: evcc_to_pdf
+          input: generate
+```
+
+If today isn't a workday (weekend or holiday), nothing fires and the
+automation simply checks again the next day - so the report ends up being
+generated on whichever day actually turns out to be the last workday. Find
+the exact `addon:` value for your instance via the service call picker in
+**Developer tools → Actions** (search for *Add-on: Send data to stdin*) and
+selecting *EVCC to PDF* from its add-on dropdown - it may include a
+repository-specific prefix in the entity/slug shown there.
 
 ## Output
 
