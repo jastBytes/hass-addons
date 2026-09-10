@@ -7,7 +7,6 @@
   "arch": [
     "amd64"
   ],
-  "startup": "application",
   "map": [
     "share:rw"
   ],
