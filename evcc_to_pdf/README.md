@@ -99,25 +99,24 @@ Send one of the following as the `input` of the `hassio.addon_stdin` service:
 Example automation, triggered on the last workday of the month at 18:00:
 
 ```yaml
-automation:
-  - alias: "evcc report on last workday of month"
-    trigger:
-      - platform: time
-        at: "18:00:00"
-    condition:
-      # today is the last day of the month...
-      - condition: template
-        value_template: "{{ (now() + timedelta(days=1)).month != now().month }}"
-      # ...and it's a workday (requires the workday integration, configured
-      # with your country/holidays)
-      - condition: state
-        entity_id: binary_sensor.workday_sensor
-        state: "on"
-    action:
-      - service: hassio.addon_stdin
-        data:
-          addon: evcc_to_pdf
-          input: generate
+triggers:
+  - at: '08:00:00'
+    trigger: time
+conditions:
+  - condition: state
+    entity_id: binary_sensor.workday_sensor
+    state: 'on'
+  - condition: template
+    value_template: >-
+      {% set today = now().date() %} {% set next_workday =
+      state_attr('binary_sensor.workday_sensor', 'next_date') %} {{ next_workday
+      is defined and next_workday is not none and next_workday.month !=
+      today.month }}
+actions:
+  - action: hassio.addon_stdin
+    data:
+      addon: 9a620e19_evcc_to_pdf
+      input: '{"year": {{ now().year }}, "month": {{ now().month }}}'
 ```
 
 If today isn't a workday (weekend or holiday), nothing fires and the
