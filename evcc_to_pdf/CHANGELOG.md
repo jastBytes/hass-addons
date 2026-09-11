@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.1 - 2026-09-11
+
+- Fix `FileExistsError: [Errno 17] File exists: './output'` on every report
+  run. The Supervisor bind-mounts the real `/share` folder over the
+  container's `/share` at start, which hid the `/share/evcc_to_pdf`
+  directory created during the image build, leaving the `/app/output`
+  symlink dangling. The directory is now (re-)created at container
+  startup instead.
+
 ## 1.1.0 - 2026-09-10
 
 - Add on-demand report generation via the add-on's stdin: send `generate`

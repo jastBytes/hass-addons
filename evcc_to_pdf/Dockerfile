@@ -28,8 +28,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # The script writes PDFs to ./output relative to its working directory;
 # point that at the Home Assistant "share" folder so reports are reachable
 # from outside the add-on (e.g. via Samba or the File editor add-on).
-RUN mkdir -p /share/evcc_to_pdf \
-    && rm -rf /app/output \
+# Note: the Supervisor bind-mounts the real /share over this path at
+# container start, so /share/evcc_to_pdf itself must be (re-)created at
+# runtime (see run.sh), not here at build time.
+RUN rm -rf /app/output \
     && ln -s /share/evcc_to_pdf /app/output
 
 COPY run.py /run.py

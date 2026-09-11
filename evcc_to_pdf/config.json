@@ -1,6 +1,6 @@
 {
   "name": "EVCC to PDF",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "slug": "evcc_to_pdf",
   "description": "Generates monthly EVCC charging cost PDF reports and optionally emails them",
   "url": "https://github.com/jastBytes/hass-addons/tree/main/evcc_to_pdf",
