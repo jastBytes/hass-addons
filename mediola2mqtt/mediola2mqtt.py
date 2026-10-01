@@ -10,6 +10,8 @@ import json
 import yaml
 import os
 import sys
+import itertools
+import queue
 import threading
 import time
 import requests
@@ -20,6 +22,11 @@ REQUEST_TIMEOUT = 5
 TICK_INTERVAL = 0.2
 POSITION_PUBLISH_INTERVAL = 0.5
 STATE_FILE_NAME = 'mediola2mqtt_state.json'
+
+# Priorities of the per-gateway command queue, lower runs first
+PRIORITY_STOP = 0
+PRIORITY_COMMAND = 1
+PRIORITY_POLL = 2
 
 # Somfy RTS (RT) command prefixes, the address is appended
 RT_COMMANDS = {
@@ -213,27 +220,113 @@ def get_mediola_id(mediola):
     return mediola.get('id', DEFAULT_MEDIOLA_ID)
 
 
-def send_request(mediolaid, params):
-    """Send a request to a gateway, returns the response body or None."""
-    mediola = get_mediola(mediolaid)
-    if not mediola or not mediola.get('host'):
+class Gateway:
+    """A Mediola gateway with its own HTTP session and command queue.
+
+    The gateway only has a single radio and processes requests one after
+    another anyway, so all requests to a gateway are serialized by a worker
+    thread. This keeps the MQTT network thread free, so that commands for
+    many blinds are accepted immediately and forwarded back to back.
+    """
+
+    def __init__(self, cfg):
+        self.id = get_mediola_id(cfg)
+        self.host = cfg.get('host')
+        self.password = cfg.get('password')
+        self.url = 'http://' + str(self.host) + cfg.get('path', '/command')
+        self.session = requests.Session()
+        self.queue = queue.PriorityQueue()
+        self.sequence = itertools.count()
+        self.thread = threading.Thread(target=self.worker, daemon=True)
+        self.thread.start()
+
+    def submit(self, job, priority=PRIORITY_COMMAND):
+        """Queue a job, returns an event that is set once it has run."""
+        done = threading.Event()
+        # The sequence number keeps jobs of the same priority in order
+        self.queue.put((priority, next(self.sequence), time.monotonic(), job, done))
+        return done
+
+    def worker(self):
+        while True:
+            _, _, queued_at, job, done = self.queue.get()
+            waited = time.monotonic() - queued_at
+            if waited >= 0.1:
+                debug_log('Mediola %s: job waited %.2fs in queue (%d pending)'
+                          % (self.id, waited, self.queue.qsize()))
+            try:
+                job()
+            except Exception as exc:
+                log('Error processing job for Mediola %s: %s' % (self.id, exc))
+            finally:
+                done.set()
+
+    def reset_session(self):
+        self.session.close()
+        self.session = requests.Session()
+
+    def request(self, params):
+        """Send a request to the gateway, returns the response body or None."""
+        payload = dict(params)
+        if self.password:
+            payload['XC_PASS'] = self.password
+        started = time.monotonic()
+        response = None
+        for attempt in (1, 2):
+            try:
+                response = self.session.get(self.url, params=payload,
+                                            timeout=REQUEST_TIMEOUT)
+                break
+            except requests.ConnectionError as exc:
+                # A kept-alive connection may have been closed by the gateway,
+                # retry once with a fresh connection.
+                self.reset_session()
+                if attempt == 2:
+                    log('Error talking to Mediola %s: %s' % (self.host, exc))
+                    return None
+            except requests.RequestException as exc:
+                self.reset_session()
+                log('Error talking to Mediola %s: %s' % (self.host, exc))
+                return None
+        debug_log('Mediola %s: %s took %.3fs'
+                  % (self.id, params.get('XC_FNC'), time.monotonic() - started))
+        if response.status_code != 200:
+            log('Mediola %s returned HTTP %d' % (self.host, response.status_code))
+            return None
+        return response.text
+
+
+gateways = {}
+
+
+def get_gateway(mediolaid):
+    if isinstance(config['mediola'], list):
+        gateway = gateways.get(mediolaid)
+    else:
+        # A single gateway is used for everything, regardless of the ID
+        gateway = next(iter(gateways.values()), None)
+    if gateway is None or not gateway.host:
         log('Error: Could not find matching Mediola!')
         return None
-    payload = dict(params)
-    if mediola.get('password'):
-        payload['XC_PASS'] = mediola['password']
-    url = 'http://' + mediola['host'] + mediola.get('path', '/command')
-    try:
-        response = requests.get(url, params=payload,
-                                headers={'Connection': 'close'},
-                                timeout=REQUEST_TIMEOUT)
-    except requests.RequestException as exc:
-        log('Error talking to Mediola %s: %s' % (mediola['host'], exc))
+    return gateway
+
+
+def send_request(mediolaid, params):
+    """Send a request to a gateway, returns the response body or None.
+
+    Must be called from the gateway's worker thread, see Gateway.submit().
+    """
+    gateway = get_gateway(mediolaid)
+    if gateway is None:
         return None
-    if response.status_code != 200:
-        log('Mediola %s returned HTTP %d' % (mediola['host'], response.status_code))
+    return gateway.request(params)
+
+
+def submit_job(mediolaid, job, priority=PRIORITY_COMMAND):
+    gateway = get_gateway(mediolaid)
+    if gateway is None:
         return None
-    return response.text
+    return gateway.submit(job, priority)
 
 
 def parse_response(text):
@@ -413,6 +506,14 @@ def handle_preset_command(blind, action):
         publish_blind(blind, event_state='open', force=True)
 
 
+def send_internal_stop(blind):
+    with lock:
+        if blind.direction != 0:
+            # A new move was started in the meantime, do not interrupt it
+            return
+    send_blind_command(blind, 'stop')
+
+
 def position_worker():
     while True:
         time.sleep(TICK_INTERVAL)
@@ -437,11 +538,13 @@ def position_worker():
                     changed = True
                 publish_blind(blind, force=blind.direction == 0)
         for blind in stops:
-            send_blind_command(blind, 'stop')
+            submit_job(blind.mediolaid, lambda b=blind: send_internal_stop(b),
+                       PRIORITY_STOP)
         if changed:
             save_positions()
         for blind, pending in followups:
-            handle_position_command(blind, pending)
+            submit_job(blind.mediolaid,
+                       lambda b=blind, p=pending: handle_position_command(b, p))
 
 
 # Define MQTT event callbacks
@@ -469,8 +572,8 @@ def on_disconnect(client, userdata, rc):
 
 def on_message(client, obj, msg):
     print("Msg: " + msg.topic + " " + str(msg.qos) + " " + str(msg.payload))
-    handler = command_handlers.get(msg.topic)
-    if handler is None:
+    entry = command_handlers.get(msg.topic)
+    if entry is None:
         debug_log('No handler for topic %s' % msg.topic)
         return
     try:
@@ -478,7 +581,9 @@ def on_message(client, obj, msg):
     except UnicodeDecodeError:
         log('Received undecodable payload on %s' % msg.topic)
         return
-    handler(payload)
+    # Do not block the MQTT thread on the gateway, queue the command instead
+    mediolaid, handler = entry
+    submit_job(mediolaid, lambda: handler(payload))
 
 def on_publish(client, obj, mid):
     print("Pub: " + str(mid))
@@ -511,8 +616,8 @@ def publish_discovery(component, object_id, payload):
     mqttc.publish(dtopic, payload=json.dumps(payload), retain=True)
 
 
-def subscribe(topic, handler):
-    command_handlers[topic] = handler
+def subscribe(topic, mediolaid, handler):
+    command_handlers[topic] = (mediolaid, handler)
     mqttc.subscribe(topic)
 
 
@@ -564,7 +669,7 @@ def setup_discovery():
             payload["position_closed"] = 0
             payload["state_topic"] = topic + "/state"
             payload["optimistic"] = False
-            subscribe(topic + "/set_position",
+            subscribe(topic + "/set_position", blind.mediolaid,
                       lambda p, b=blind: handle_position_command(b, p))
         elif blind.type == 'ER':
             # Elero blinds report their state, everything else is optimistic
@@ -573,7 +678,7 @@ def setup_discovery():
         else:
             payload["optimistic"] = True
 
-        subscribe(topic + "/set", lambda p, b=blind: handle_cover_command(b, p))
+        subscribe(topic + "/set", blind.mediolaid, lambda p, b=blind: handle_cover_command(b, p))
         publish_discovery('cover', blind.unique_id, payload)
 
         if blind.type != 'ER':
@@ -592,7 +697,7 @@ def setup_discovery():
                 "device": device_payload(deviceid, "Mediola Blind"),
             }
             button_payload.update(availability_payload())
-            subscribe(topic + "/" + action,
+            subscribe(topic + "/" + action, blind.mediolaid,
                       lambda p, b=blind, a=action: handle_preset_command(b, a))
             publish_discovery('button', blind.unique_id + '_' + action, button_payload)
 
@@ -610,19 +715,30 @@ def poll_states():
     """Query the current state of all Elero blinds from the gateways."""
     interval = general.get('poll_interval', 0)
     while True:
+        pending = []
         for mediola in iter_mediolas():
             mediolaid = get_mediola_id(mediola)
-            states = parse_response(send_request(mediolaid, {'XC_FNC': 'GetStates'}))
-            if not isinstance(states, list):
-                continue
-            for entry in states:
-                if not isinstance(entry, dict) or entry.get('type') != 'ER':
-                    continue
-                handle_blind(entry.get('type'), str(entry.get('adr', '')).lower(),
-                             str(entry.get('state', ''))[-2:].lower(), mediolaid)
+            done = submit_job(mediolaid, lambda m=mediolaid: poll_gateway(m),
+                              PRIORITY_POLL)
+            if done is not None:
+                pending.append(done)
+        # Wait for the polls, so they do not pile up behind a busy gateway
+        for done in pending:
+            done.wait()
         if not interval or interval <= 0:
             return
         time.sleep(interval)
+
+
+def poll_gateway(mediolaid):
+    states = parse_response(send_request(mediolaid, {'XC_FNC': 'GetStates'}))
+    if not isinstance(states, list):
+        return
+    for entry in states:
+        if not isinstance(entry, dict) or entry.get('type') != 'ER':
+            continue
+        handle_blind(entry.get('type'), str(entry.get('adr', '')).lower(),
+                     str(entry.get('state', ''))[-2:].lower(), mediolaid)
 
 
 def handle_button(packet_type, address, state, mediolaid):
@@ -751,6 +867,9 @@ def create_sockets():
         sys.exit(1)
     return sockets
 
+
+for mediola in iter_mediolas():
+    gateways[get_mediola_id(mediola)] = Gateway(mediola)
 
 # Setup MQTT connection
 try:

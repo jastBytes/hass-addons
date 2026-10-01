@@ -5,8 +5,8 @@ Thanks for considering a contribution to this add-on repository.
 ## Repository layout
 
 Each top-level folder (`evcc_to_pdf/`, `mediola2mqtt/`) is a self-contained
-Home Assistant add-on with its own `config.json`, `Dockerfile`, `build.yaml`
-and `README.md`. There is no shared code between add-ons.
+Home Assistant add-on with its own `config.json`, `Dockerfile` and
+`README.md`. There is no shared code between add-ons.
 
 ## Making a change
 
@@ -26,19 +26,23 @@ and `README.md`. There is no shared code between add-ons.
 Every push and pull request runs two GitHub Actions workflows:
 
 * **Lint** ([`frenck/action-addon-linter`](https://github.com/frenck/action-addon-linter))
-  checks each changed add-on's `config.json`/`build.yaml` against Home
+  checks each add-on's `config.json` against Home
   Assistant's add-on conventions.
 * **Builder** builds the Docker image (amd64 only, matching what both
-  add-ons declare) for any add-on whose `build.yaml`, `config.json`,
-  `Dockerfile`, `rootfs`, or `mediola2mqtt.py` changed, as a build-only
-  smoke test (`--test`, nothing is pushed) on pull requests.
+  add-ons declare) for any add-on whose `config.json`, `Dockerfile`,
+  `rootfs`, `run.sh`, `run.py` or `mediola2mqtt.py` changed, using Home
+  Assistant's [`build-image`](https://github.com/home-assistant/builder)
+  action. It is a build-only smoke test: nothing is pushed, since the
+  Supervisor builds the add-ons locally from their `Dockerfile`.
 
 Both need to pass before a pull request can be merged.
 
 ## Adding a new add-on
 
 Use an existing add-on folder as a template. At minimum you need
-`config.json`, `Dockerfile`, `build.yaml`, `README.md` and `CHANGELOG.md`.
+`config.json`, `Dockerfile`, `README.md` and `CHANGELOG.md`. The base image
+is set directly in the `Dockerfile` (`FROM ...`); `build.yaml` is no longer
+used.
 Add a section for it to the root [README.md](./README.md) and an `icon.png`
 (128x128) once you have one. `home-assistant/actions/helpers/find-addons`
 (used by both workflows) discovers add-on folders automatically - no other

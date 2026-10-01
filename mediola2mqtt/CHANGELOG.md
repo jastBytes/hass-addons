@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.5.0 - 2026-10-01
+
+### Changed
+
+- Commands for many blinds at once (scenes, groups, automations) are
+  forwarded to the gateway noticeably faster. Gateway requests no longer
+  block MQTT message processing: each gateway now has its own command queue
+  that sends commands back to back, reusing one HTTP connection instead of
+  opening a new one for every command. The gateway still sends the radio
+  telegrams one after another, so blinds keep starting slightly staggered.
+- Automatic stop commands for intermediate positions are sent ahead of other
+  queued commands, so blinds stop as close as possible to the requested
+  position.
+
+### Added
+
+- With `mqtt.debug` enabled, the log shows how long the gateway took for
+  each request and how long a command waited in the queue, which helps to
+  tell gateway delays apart from add-on delays.
+
 ## 0.4.0 - 2026-09-10
 
 - Switch version numbering to semver (`major.minor.patch`), matching
