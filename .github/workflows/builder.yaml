@@ -86,6 +86,9 @@ jobs:
              # Image names must be lowercase, the repository owner is not
              owner="${{ github.repository_owner }}"
              echo "image=ghcr.io/${owner,,}/${{ matrix.arch }}-${{ steps.info.outputs.slug }}" >> $GITHUB_OUTPUT;
+             # The info helper returns JSON-quoted values, e.g. "0.5.0"
+             version='${{ steps.info.outputs.version }}'
+             echo "version=${version//\"/}" >> $GITHUB_OUTPUT;
            else
              echo "${{ matrix.arch }} is not a valid arch for ${{ matrix.addon }}, skipping build";
              echo "build_arch=false" >> $GITHUB_OUTPUT;
@@ -100,8 +103,8 @@ jobs:
           arch: ${{ matrix.arch }}
           context: ./${{ matrix.addon }}
           image: ${{ steps.check.outputs.image }}
-          image-tags: ${{ steps.info.outputs.version }}
-          version: ${{ steps.info.outputs.version }}
+          image-tags: ${{ steps.check.outputs.version }}
+          version: ${{ steps.check.outputs.version }}
           container-registry-password: ${{ secrets.GITHUB_TOKEN }}
           cache-gha-scope: ${{ matrix.addon }}
           cosign: "false"
