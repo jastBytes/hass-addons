@@ -137,6 +137,7 @@ class Blind:
         # Incremented for every received command, so that queued commands
         # which were overtaken by a newer one can be skipped
         self.command_seq = 0
+        self.target_reached_at = None
 
     @property
     def identifier(self):
@@ -157,7 +158,14 @@ class Blind:
                 return False
         return self.adr.lower() == str(address).lower()
 
-    def begin_move(self, direction, target):
+    def begin_move(self, direction, target, started=None):
+        """Start tracking a move.
+
+        started is the time the command was sent to the gateway. The gateway
+        delays start and stop commands alike, so measuring the travel time
+        from there (instead of from the gateway's response) cancels the delay
+        out and the blind stops at the requested position.
+        """
         if not self.tracks_position:
             self.direction = 0
             return
@@ -168,7 +176,7 @@ class Blind:
         self.direction = direction
         self.target = target
         self.pending_target = None
-        self.last_tick = time.monotonic()
+        self.last_tick = started if started is not None else time.monotonic()
 
     def halt(self):
         self.direction = 0
@@ -188,11 +196,11 @@ class Blind:
         if travel <= 0:
             return True
         self.position += self.direction * elapsed * 100.0 / travel
-        if self.direction > 0 and self.position >= self.target:
-            self.position = min(self.target, 100.0)
-            return True
-        if self.direction < 0 and self.position <= self.target:
-            self.position = max(self.target, 0.0)
+        overshoot = (self.position - self.target) * self.direction
+        if overshoot >= 0:
+            # Time at which the target was actually passed, between two ticks
+            self.target_reached_at = now - overshoot * travel / 100.0
+            self.position = max(0.0, min(100.0, self.target))
             return True
         self.position = max(0.0, min(100.0, self.position))
         return False
@@ -467,13 +475,14 @@ def handle_cover_command(blind, payload):
     if command not in ('open', 'close', 'stop'):
         log('Wrong command: %s' % payload)
         return
+    started = time.monotonic()
     if not send_blind_command(blind, command):
         return
     with lock:
         if command == 'open':
-            blind.begin_move(1, 100.0)
+            blind.begin_move(1, 100.0, started)
         elif command == 'close':
-            blind.begin_move(-1, 0.0)
+            blind.begin_move(-1, 0.0, started)
         else:
             blind.halt()
         publish_blind(blind, force=True)
@@ -512,10 +521,11 @@ def handle_position_command(blind, payload):
     else:
         return
 
+    started = time.monotonic()
     if not send_blind_command(blind, action):
         return
     with lock:
-        blind.begin_move(direction, stop_at)
+        blind.begin_move(direction, stop_at, started)
         blind.pending_target = pending
         publish_blind(blind, force=True)
 
@@ -533,12 +543,30 @@ def handle_preset_command(blind, action):
         publish_blind(blind, event_state='open', force=True)
 
 
-def send_internal_stop(blind):
+def send_internal_stop(blind, direction, reached_at):
     with lock:
         if blind.direction != 0:
             # A new move was started in the meantime, do not interrupt it
             return
-    send_blind_command(blind, 'stop')
+    started = time.monotonic()
+    if not send_blind_command(blind, 'stop'):
+        return
+    # The blind kept moving until the stop command was sent, e.g. while it
+    # waited for another command to the gateway. Account for that, so the
+    # tracked position matches where the blind actually stopped.
+    late = started - reached_at if reached_at is not None else 0.0
+    travel = blind.travel_up if direction > 0 else blind.travel_down
+    if late < 0.05 or travel <= 0:
+        return
+    with lock:
+        if blind.direction != 0 or blind.position is None:
+            return
+        blind.position = max(0.0, min(100.0,
+                                      blind.position + direction * late * 100.0 / travel))
+        publish_blind(blind, force=True)
+    debug_log('Stop for %s was sent %.2fs late, corrected position to %.1f'
+              % (blind.name, late, blind.position))
+    request_save()
 
 
 def run_followup(blind, target, seq):
@@ -550,9 +578,22 @@ def run_followup(blind, target, seq):
     handle_position_command(blind, target)
 
 
+def next_tick_delay():
+    """Wake up right when the next intermediate target is reached."""
+    delay = TICK_INTERVAL
+    with lock:
+        for blind in blinds:
+            if not blind.tracks_position or blind.direction == 0 or blind.position is None:
+                continue
+            travel = blind.travel_up if blind.direction > 0 else blind.travel_down
+            remaining = (blind.target - blind.position) * blind.direction * travel / 100.0
+            delay = min(delay, max(remaining, 0.01))
+    return delay
+
+
 def position_worker():
     while True:
-        time.sleep(TICK_INTERVAL)
+        time.sleep(next_tick_delay())
         now = time.monotonic()
         stops = []
         followups = []
@@ -564,17 +605,19 @@ def position_worker():
                 if blind.advance(now):
                     at_end_stop = blind.target <= 0.0 or blind.target >= 100.0
                     pending = blind.pending_target
+                    direction = blind.direction
                     blind.halt()
                     if not at_end_stop:
                         # Intermediate positions have to be stopped explicitly,
                         # the end stops are handled by the motor itself.
-                        stops.append(blind)
+                        stops.append((blind, direction, blind.target_reached_at))
                     if pending is not None:
                         followups.append((blind, pending, blind.command_seq))
                     changed = True
                 publish_blind(blind, force=blind.direction == 0)
-        for blind in stops:
-            submit_job(blind.mediolaid, lambda b=blind: send_internal_stop(b),
+        for blind, direction, reached_at in stops:
+            submit_job(blind.mediolaid,
+                       lambda b=blind, d=direction, r=reached_at: send_internal_stop(b, d, r),
                        PRIORITY_STOP)
         if changed:
             request_save()

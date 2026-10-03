@@ -12,6 +12,14 @@
   This reduces wear on SD cards when `poll_interval` is used.
 - Received MQTT messages and subscriptions are only logged with
   `mqtt.debug` enabled.
+- More accurate intermediate positions: the travel time is now measured
+  from when a command is sent to the gateway instead of from its response,
+  and the stop is sent right when the target is reached instead of on the
+  next 200 ms tick. With a gateway taking 400 ms per command, a blind sent
+  to 50% previously stopped at about 44%.
+- If the stop for an intermediate position is delayed because the gateway
+  is busy, the reported position now reflects where the blind actually
+  stopped instead of the requested one.
 
 ### Fixed
 
