@@ -5,6 +5,7 @@
 
 import paho.mqtt.client as mqtt
 import select
+import signal
 import socket
 import json
 import yaml
@@ -21,6 +22,8 @@ DEFAULT_LISTEN_PORTS = [1902, 1901]
 REQUEST_TIMEOUT = 5
 TICK_INTERVAL = 0.2
 POSITION_PUBLISH_INTERVAL = 0.5
+# Changed positions are collected and written at most this often
+SAVE_INTERVAL = 5.0
 STATE_FILE_NAME = 'mediola2mqtt_state.json'
 
 # Priorities of the per-gateway command queue, lower runs first
@@ -80,9 +83,13 @@ availability_topic = config['mqtt']['topic'] + '/status'
 state_file = os.path.join(state_dir, STATE_FILE_NAME)
 
 lock = threading.RLock()
+save_lock = threading.Lock()
 command_handlers = {}
 resolved_hosts = {}
 poll_thread = None
+positions_dirty = False
+last_saved_positions = None
+last_save_time = 0.0
 
 
 def log(message):
@@ -127,6 +134,10 @@ class Blind:
         self.published_position = None
         self.published_state = None
         self.last_position_publish = 0.0
+        # Incremented for every received command, so that queued commands
+        # which were overtaken by a newer one can be skipped
+        self.command_seq = 0
+        self.target_reached_at = None
 
     @property
     def identifier(self):
@@ -147,7 +158,14 @@ class Blind:
                 return False
         return self.adr.lower() == str(address).lower()
 
-    def begin_move(self, direction, target):
+    def begin_move(self, direction, target, started=None):
+        """Start tracking a move.
+
+        started is the time the command was sent to the gateway. The gateway
+        delays start and stop commands alike, so measuring the travel time
+        from there (instead of from the gateway's response) cancels the delay
+        out and the blind stops at the requested position.
+        """
         if not self.tracks_position:
             self.direction = 0
             return
@@ -158,7 +176,7 @@ class Blind:
         self.direction = direction
         self.target = target
         self.pending_target = None
-        self.last_tick = time.monotonic()
+        self.last_tick = started if started is not None else time.monotonic()
 
     def halt(self):
         self.direction = 0
@@ -178,11 +196,11 @@ class Blind:
         if travel <= 0:
             return True
         self.position += self.direction * elapsed * 100.0 / travel
-        if self.direction > 0 and self.position >= self.target:
-            self.position = min(self.target, 100.0)
-            return True
-        if self.direction < 0 and self.position <= self.target:
-            self.position = max(self.target, 0.0)
+        overshoot = (self.position - self.target) * self.direction
+        if overshoot >= 0:
+            # Time at which the target was actually passed, between two ticks
+            self.target_reached_at = now - overshoot * travel / 100.0
+            self.position = max(0.0, min(100.0, self.target))
             return True
         self.position = max(0.0, min(100.0, self.position))
         return False
@@ -387,6 +405,7 @@ def blind_topic(blind):
 
 
 def load_positions():
+    global last_saved_positions
     if not os.path.exists(state_file):
         return
     try:
@@ -395,25 +414,41 @@ def load_positions():
     except (OSError, ValueError) as exc:
         log('Could not read stored positions: %s' % exc)
         return
+    if isinstance(stored, dict):
+        last_saved_positions = stored
     for blind in blinds:
         position = stored.get(blind.unique_id)
         if blind.tracks_position and isinstance(position, (int, float)):
             blind.position = max(0.0, min(100.0, float(position)))
 
 
+def request_save():
+    """Mark the positions as changed, they are written by the position worker."""
+    global positions_dirty
+    positions_dirty = True
+
+
 def save_positions():
+    """Write the positions, unless they did not change since the last write."""
+    global positions_dirty, last_saved_positions, last_save_time
     stored = {}
     with lock:
+        positions_dirty = False
+        last_save_time = time.monotonic()
         for blind in blinds:
             if blind.tracks_position and blind.position is not None:
                 stored[blind.unique_id] = round(blind.position, 1)
-    if not stored:
-        return
-    try:
-        with open(state_file, 'w') as fp:
-            json.dump(stored, fp)
-    except OSError as exc:
-        debug_log('Could not store positions: %s' % exc)
+    with save_lock:
+        if not stored or stored == last_saved_positions:
+            return
+        try:
+            with open(state_file, 'w') as fp:
+                json.dump(stored, fp)
+        except OSError as exc:
+            debug_log('Could not store positions: %s' % exc)
+            return
+        last_saved_positions = stored
+    debug_log('Stored positions')
 
 
 def publish_blind(blind, event_state=None, force=False):
@@ -440,18 +475,19 @@ def handle_cover_command(blind, payload):
     if command not in ('open', 'close', 'stop'):
         log('Wrong command: %s' % payload)
         return
+    started = time.monotonic()
     if not send_blind_command(blind, command):
         return
     with lock:
         if command == 'open':
-            blind.begin_move(1, 100.0)
+            blind.begin_move(1, 100.0, started)
         elif command == 'close':
-            blind.begin_move(-1, 0.0)
+            blind.begin_move(-1, 0.0, started)
         else:
             blind.halt()
         publish_blind(blind, force=True)
     if command == 'stop':
-        save_positions()
+        request_save()
 
 
 def handle_position_command(blind, payload):
@@ -485,10 +521,11 @@ def handle_position_command(blind, payload):
     else:
         return
 
+    started = time.monotonic()
     if not send_blind_command(blind, action):
         return
     with lock:
-        blind.begin_move(direction, stop_at)
+        blind.begin_move(direction, stop_at, started)
         blind.pending_target = pending
         publish_blind(blind, force=True)
 
@@ -506,17 +543,57 @@ def handle_preset_command(blind, action):
         publish_blind(blind, event_state='open', force=True)
 
 
-def send_internal_stop(blind):
+def send_internal_stop(blind, direction, reached_at):
     with lock:
         if blind.direction != 0:
             # A new move was started in the meantime, do not interrupt it
             return
-    send_blind_command(blind, 'stop')
+    started = time.monotonic()
+    if not send_blind_command(blind, 'stop'):
+        return
+    # The blind kept moving until the stop command was sent, e.g. while it
+    # waited for another command to the gateway. Account for that, so the
+    # tracked position matches where the blind actually stopped.
+    late = started - reached_at if reached_at is not None else 0.0
+    travel = blind.travel_up if direction > 0 else blind.travel_down
+    if late < 0.05 or travel <= 0:
+        return
+    with lock:
+        if blind.direction != 0 or blind.position is None:
+            return
+        blind.position = max(0.0, min(100.0,
+                                      blind.position + direction * late * 100.0 / travel))
+        publish_blind(blind, force=True)
+    debug_log('Stop for %s was sent %.2fs late, corrected position to %.1f'
+              % (blind.name, late, blind.position))
+    request_save()
+
+
+def run_followup(blind, target, seq):
+    """Continue a reference drive, unless a newer command arrived since."""
+    if blind.command_seq != seq:
+        debug_log('Skipping follow-up move of %s, overtaken by a newer command'
+                  % blind.name)
+        return
+    handle_position_command(blind, target)
+
+
+def next_tick_delay():
+    """Wake up right when the next intermediate target is reached."""
+    delay = TICK_INTERVAL
+    with lock:
+        for blind in blinds:
+            if not blind.tracks_position or blind.direction == 0 or blind.position is None:
+                continue
+            travel = blind.travel_up if blind.direction > 0 else blind.travel_down
+            remaining = (blind.target - blind.position) * blind.direction * travel / 100.0
+            delay = min(delay, max(remaining, 0.01))
+    return delay
 
 
 def position_worker():
     while True:
-        time.sleep(TICK_INTERVAL)
+        time.sleep(next_tick_delay())
         now = time.monotonic()
         stops = []
         followups = []
@@ -528,23 +605,27 @@ def position_worker():
                 if blind.advance(now):
                     at_end_stop = blind.target <= 0.0 or blind.target >= 100.0
                     pending = blind.pending_target
+                    direction = blind.direction
                     blind.halt()
                     if not at_end_stop:
                         # Intermediate positions have to be stopped explicitly,
                         # the end stops are handled by the motor itself.
-                        stops.append(blind)
+                        stops.append((blind, direction, blind.target_reached_at))
                     if pending is not None:
-                        followups.append((blind, pending))
+                        followups.append((blind, pending, blind.command_seq))
                     changed = True
                 publish_blind(blind, force=blind.direction == 0)
-        for blind in stops:
-            submit_job(blind.mediolaid, lambda b=blind: send_internal_stop(b),
+        for blind, direction, reached_at in stops:
+            submit_job(blind.mediolaid,
+                       lambda b=blind, d=direction, r=reached_at: send_internal_stop(b, d, r),
                        PRIORITY_STOP)
         if changed:
-            save_positions()
-        for blind, pending in followups:
+            request_save()
+        for blind, pending, seq in followups:
             submit_job(blind.mediolaid,
-                       lambda b=blind, p=pending: handle_position_command(b, p))
+                       lambda b=blind, p=pending, q=seq: run_followup(b, p, q))
+        if positions_dirty and now - last_save_time >= SAVE_INTERVAL:
+            save_positions()
 
 
 # Define MQTT event callbacks
@@ -571,7 +652,7 @@ def on_disconnect(client, userdata, rc):
         print("Disconnected")
 
 def on_message(client, obj, msg):
-    print("Msg: " + msg.topic + " " + str(msg.qos) + " " + str(msg.payload))
+    debug_log("Msg: " + msg.topic + " " + str(msg.qos) + " " + str(msg.payload))
     entry = command_handlers.get(msg.topic)
     if entry is None:
         debug_log('No handler for topic %s' % msg.topic)
@@ -582,14 +663,30 @@ def on_message(client, obj, msg):
         log('Received undecodable payload on %s' % msg.topic)
         return
     # Do not block the MQTT thread on the gateway, queue the command instead
-    mediolaid, handler = entry
-    submit_job(mediolaid, lambda: handler(payload))
+    mediolaid, blind, handler = entry
+    with lock:
+        blind.command_seq += 1
+        seq = blind.command_seq
+        # A new command replaces a pending reference drive follow-up
+        blind.pending_target = None
+    is_stop = payload.strip().lower() == 'stop'
+
+    def job():
+        # Only the latest command per blind is sent, older ones still waiting
+        # in the queue are dropped. Stop commands are always sent.
+        if not is_stop and blind.command_seq != seq:
+            debug_log('Skipping %s for %s, overtaken by a newer command'
+                      % (payload, blind.name))
+            return
+        handler(payload)
+
+    submit_job(mediolaid, job)
 
 def on_publish(client, obj, mid):
     print("Pub: " + str(mid))
 
 def on_subscribe(client, obj, mid, granted_qos):
-    print("Subscribed: " + str(mid) + " " + str(granted_qos))
+    debug_log("Subscribed: " + str(mid) + " " + str(granted_qos))
 
 def on_log(client, obj, level, string):
     print(string)
@@ -616,8 +713,8 @@ def publish_discovery(component, object_id, payload):
     mqttc.publish(dtopic, payload=json.dumps(payload), retain=True)
 
 
-def subscribe(topic, mediolaid, handler):
-    command_handlers[topic] = (mediolaid, handler)
+def subscribe(topic, blind, handler):
+    command_handlers[topic] = (blind.mediolaid, blind, handler)
     mqttc.subscribe(topic)
 
 
@@ -669,7 +766,7 @@ def setup_discovery():
             payload["position_closed"] = 0
             payload["state_topic"] = topic + "/state"
             payload["optimistic"] = False
-            subscribe(topic + "/set_position", blind.mediolaid,
+            subscribe(topic + "/set_position", blind,
                       lambda p, b=blind: handle_position_command(b, p))
         elif blind.type == 'ER':
             # Elero blinds report their state, everything else is optimistic
@@ -678,7 +775,7 @@ def setup_discovery():
         else:
             payload["optimistic"] = True
 
-        subscribe(topic + "/set", blind.mediolaid, lambda p, b=blind: handle_cover_command(b, p))
+        subscribe(topic + "/set", blind, lambda p, b=blind: handle_cover_command(b, p))
         publish_discovery('cover', blind.unique_id, payload)
 
         if blind.type != 'ER':
@@ -697,7 +794,7 @@ def setup_discovery():
                 "device": device_payload(deviceid, "Mediola Blind"),
             }
             button_payload.update(availability_payload())
-            subscribe(topic + "/" + action, blind.mediolaid,
+            subscribe(topic + "/" + action, blind,
                       lambda p, b=blind, a=action: handle_preset_command(b, a))
             publish_discovery('button', blind.unique_id + '_' + action, button_payload)
 
@@ -792,7 +889,7 @@ def handle_blind(packet_type, address, state, mediolaid):
         with lock:
             event_state = apply_er_state(blind, state)
             publish_blind(blind, event_state=event_state)
-        save_positions()
+        request_save()
         return True
     return False
 
@@ -902,6 +999,15 @@ load_positions()
 threading.Thread(target=position_worker, daemon=True).start()
 
 sockets = create_sockets()
+
+
+def handle_sigterm(signum, frame):
+    # Positions are written delayed, do not lose the last changes on shutdown
+    save_positions()
+    sys.exit(0)
+
+
+signal.signal(signal.SIGTERM, handle_sigterm)
 
 while True:
     readable, _, _ = select.select(sockets, [], [])

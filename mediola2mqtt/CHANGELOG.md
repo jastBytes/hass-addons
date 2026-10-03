@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.5.1 - 2026-10-03
+
+### Changed
+
+- If several commands for the same blind are waiting for a busy gateway,
+  only the latest one is sent, e.g. a quick "open" followed by "close" no
+  longer moves the blind up first. Stop commands are always sent.
+- Blind positions are only written to disk when they actually changed, and
+  at most every 5 seconds, instead of on every status report of the gateway.
+  This reduces wear on SD cards when `poll_interval` is used.
+- Received MQTT messages and subscriptions are only logged with
+  `mqtt.debug` enabled.
+- More accurate intermediate positions: the travel time is now measured
+  from when a command is sent to the gateway instead of from its response,
+  and the stop is sent right when the target is reached instead of on the
+  next 200 ms tick. With a gateway taking 400 ms per command, a blind sent
+  to 50% previously stopped at about 44%.
+- If the stop for an intermediate position is delayed because the gateway
+  is busy, the reported position now reflects where the blind actually
+  stopped instead of the requested one.
+
+### Fixed
+
+- The add-on now receives the stop signal of the Supervisor, so it shuts
+  down right away and stores the latest positions before exiting.
+
 ## 0.5.0 - 2026-10-01
 
 ### Changed
