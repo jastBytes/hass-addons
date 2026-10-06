@@ -87,6 +87,8 @@ save_lock = threading.Lock()
 command_handlers = {}
 resolved_hosts = {}
 poll_thread = None
+# Senders of unrelated UDP broadcasts, logged only once each
+ignored_senders = set()
 positions_dirty = False
 last_saved_positions = None
 last_save_time = 0.0
@@ -682,14 +684,17 @@ def on_message(client, obj, msg):
 
     submit_job(mediolaid, job)
 
-def on_publish(client, obj, mid):
-    print("Pub: " + str(mid))
-
 def on_subscribe(client, obj, mid, granted_qos):
     debug_log("Subscribed: " + str(mid) + " " + str(granted_qos))
 
+MQTT_LOG_PROBLEMS = (getattr(mqtt, 'MQTT_LOG_WARNING', 0x04),
+                     getattr(mqtt, 'MQTT_LOG_ERR', 0x08))
+
+
 def on_log(client, obj, level, string):
-    print(string)
+    # Only warnings and errors, the rest logs every single MQTT packet
+    if level in MQTT_LOG_PROBLEMS:
+        log('MQTT: ' + string)
 
 
 def device_payload(deviceid, name):
@@ -980,10 +985,10 @@ mqttc.on_subscribe = on_subscribe
 mqttc.on_disconnect = on_disconnect
 mqttc.on_message = on_message
 
+mqttc.on_log = on_log
+
 if debug:
     print("Debugging messages enabled")
-    mqttc.on_log = on_log    
-    mqttc.on_publish = on_publish
 
 if config['mqtt']['username'] and config['mqtt']['password']:
     mqttc.username_pw_set(config['mqtt']['username'], config['mqtt']['password'])
@@ -1013,12 +1018,22 @@ while True:
     readable, _, _ = select.select(sockets, [], [])
     for sock in readable:
         data, addr = sock.recvfrom(1024)
+
+        # For the v4 (and probably v5) gateways, the status packet starts
+        # with '{XC_EVT}', but for the v6 it starts with 'STA:'. Other devices
+        # broadcast on the same ports too (e.g. SDDP announcements of TVs),
+        # those are ignored.
+        if not data.startswith((b'{XC_EVT}', b'STA:')):
+            if debug and addr[0] not in ignored_senders:
+                ignored_senders.add(addr[0])
+                log('Ignoring UDP broadcasts from %s, they are not Mediola '
+                    'status messages (only logged once)' % addr[0])
+            continue
+
         if debug:
             print('Received message: %s' % data)
             mqttc.publish(config['mqtt']['topic'], payload=data, retain=False)
 
-        # For the v4 (and probably v5) gateways, the status packet starts
-        # with '{XC_EVT}', but for the v6 it starts with 'STA:'.
         if data.startswith(b'{XC_EVT}'):
             data = data.replace(b'{XC_EVT}', b'')
             if not handle_packet_v4(data, addr):
