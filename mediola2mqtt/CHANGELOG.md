@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.2 - 2026-10-06
+
+### Fixed
+
+- UDP broadcasts from other devices on the gateway ports (e.g. SDDP
+  announcements of Samsung TVs on port 1902) no longer flood the log and the
+  MQTT topic in debug mode. They are ignored, and each sender is logged only
+  once.
+- The MQTT library's log is limited to warnings and errors, instead of a
+  line for every single MQTT packet in debug mode. MQTT warnings and errors
+  are now also logged without debug mode.
+
 ## 0.5.1 - 2026-10-03
 
 ### Changed
