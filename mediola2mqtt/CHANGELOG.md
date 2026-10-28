@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.3 - 2026-10-28
+
+### Fixed
+
+- Blinds no longer briefly switch to "opening" or "closing" in Home Assistant
+  on every status poll. The gateway sometimes misses the end position of a
+  move and then keeps reporting the blind as moving. A polled "moving" state
+  is now ignored if the blind is not moving, and taken as the end position
+  if the position is still unknown.
+
 ## 0.5.2 - 2026-10-06
 
 ### Fixed

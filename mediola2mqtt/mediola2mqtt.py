@@ -840,7 +840,8 @@ def poll_gateway(mediolaid):
         if not isinstance(entry, dict) or entry.get('type') != 'ER':
             continue
         handle_blind(entry.get('type'), str(entry.get('adr', '')).lower(),
-                     str(entry.get('state', ''))[-2:].lower(), mediolaid)
+                     str(entry.get('state', ''))[-2:].lower(), mediolaid,
+                     polled=True)
 
 
 def handle_button(packet_type, address, state, mediolaid):
@@ -858,8 +859,19 @@ def handle_button(packet_type, address, state, mediolaid):
     return False
 
 
-def apply_er_state(blind, state):
-    """Update the tracked position from a gateway status report."""
+def apply_er_state(blind, state, polled=False):
+    """Update the tracked position from a gateway status report.
+
+    Returns the state to publish, or None if the report is ignored.
+    """
+    if polled and blind.direction == 0 and \
+       (state in ER_STATE_OPENING or state in ER_STATE_CLOSING):
+        # The gateway keeps the last state it received and sometimes misses
+        # the end position of a move, then a poll reports "moving" for hours.
+        # Real moves are broadcast right away, so this one is long finished.
+        if blind.position is not None or not blind.tracks_position:
+            return None
+        state = ER_STATE_OPEN[0] if state in ER_STATE_OPENING else ER_STATE_CLOSED[0]
     if state in ER_STATE_OPEN:
         blind.halt()
         blind.set_position(100.0)
@@ -883,7 +895,7 @@ def apply_er_state(blind, state):
     return 'unknown'
 
 
-def handle_blind(packet_type, address, state, mediolaid):
+def handle_blind(packet_type, address, state, mediolaid, polled=False):
     if packet_type != 'ER':
         return False
     for blind in blinds:
@@ -892,7 +904,9 @@ def handle_blind(packet_type, address, state, mediolaid):
         if isinstance(config['mediola'], list) and blind.mediolaid != mediolaid:
             continue
         with lock:
-            event_state = apply_er_state(blind, state)
+            event_state = apply_er_state(blind, state, polled)
+            if event_state is None:
+                return True
             publish_blind(blind, event_state=event_state)
         request_save()
         return True
