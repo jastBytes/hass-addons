@@ -1,10 +1,16 @@
 # Changelog
 
-## 1.1.3 - 2026-11-25
+## 1.2.0 - 2026-11-25
 
+- New PDF layout: masthead with period and sender, key figures (charging
+  sessions, energy, cost), a cleaner table with a single total row at the
+  end, local date format, and a footer with page numbers on every page.
+  Uses the Inter font. An empty month now says so instead of showing an
+  empty table.
 - The "Charging Duration" column now shows evcc's actual charging time
   (`chargeDuration`) instead of the time the car was plugged in, which could
   be days for a few kWh. Sessions without a charging time show `N/A`.
+  Minutes are zero-padded (`2h 03m`).
 - Install `libharfbuzz-subset0` so WeasyPrint uses HarfBuzz for font
   subsetting and no longer logs a warning about it.
 - Move the local fixes to the upstream script into `patch_upstream.py`.

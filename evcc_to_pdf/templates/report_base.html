@@ -1,0 +1,293 @@
+{#- Shared layout for template_de.html / template_en.html, which only set
+    `lang`. Receives the same context as upstream's templates: sender,
+    creation_date (YYYY-MM-DD), period, columns, charges, total_energy,
+    total_price, page_orientation. -#}
+{%- set T = {
+  'de': {
+    'title': 'Ladekostenübersicht',
+    'period': 'Abrechnungszeitraum',
+    'created': 'Erstellt am',
+    'sessions': 'Ladevorgänge',
+    'energy': 'Geladene Energie',
+    'cost': 'Ladekosten',
+    'total': 'Summe',
+    'empty': 'Keine Ladevorgänge in diesem Zeitraum.',
+    'page': 'Seite',
+    'of': 'von',
+  },
+  'en': {
+    'title': 'Charging Cost Summary',
+    'period': 'Billing period',
+    'created': 'Created on',
+    'sessions': 'Charging sessions',
+    'energy': 'Energy charged',
+    'cost': 'Charging cost',
+    'total': 'Total',
+    'empty': 'No charging sessions in this period.',
+    'page': 'Page',
+    'of': 'of',
+  },
+}[lang] -%}
+
+{%- macro date(v) -%}
+  {%- if lang == 'de' and v|length >= 10 -%}{{ v[8:10] }}.{{ v[5:7] }}.{{ v[0:4] }}{%- else -%}{{ v[0:10] }}{%- endif -%}
+{%- endmacro -%}
+
+{%- macro cell(c, v) -%}
+  {%- if c.id in ('start_time', 'end_time') and v|length >= 16 -%}
+    {{ date(v) }} <span class="time">{{ v[11:16] }}</span>
+  {%- else -%}
+    {{ v }}
+  {%- endif -%}
+{%- endmacro -%}
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+<meta charset="UTF-8">
+<title>{{ T.title }} {{ period }}</title>
+<style>
+  :root {
+    --ink: #1c2530;
+    --muted: #6a7480;
+    --line: #dde2e8;
+    --zebra: #f6f8fa;
+    --accent: #1f5f8b;
+    --accent-soft: #eaf2f8;
+  }
+
+  @page {
+    size: A4 {{ page_orientation|default('portrait') }};
+    margin: 16mm 16mm 20mm 16mm;
+
+    @bottom-left {
+      content: string(sender) "  ·  " string(doctitle);
+      font: 7.5pt "Inter", "DejaVu Sans", sans-serif;
+      color: #6a7480;
+    }
+    @bottom-right {
+      content: "{{ T.page }} " counter(page) " {{ T.of }} " counter(pages);
+      font: 7.5pt "Inter", "DejaVu Sans", sans-serif;
+      color: #6a7480;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  html {
+    font-family: "Inter", "DejaVu Sans", sans-serif;
+    font-size: 9pt;
+    line-height: 1.45;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+
+  body { margin: 0; }
+
+  /* ---------- header ---------- */
+  .masthead {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding-top: 5mm;
+    border-top: 3pt solid var(--accent);
+    padding-bottom: 6mm;
+    border-bottom: 0.75pt solid var(--line);
+  }
+
+  .eyebrow {
+    font-size: 7.5pt;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 1.5mm;
+  }
+
+  h1 {
+    white-space: nowrap;
+    font-size: 21pt;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    line-height: 1.1;
+    margin: 0;
+    string-set: doctitle "{{ T.title }} " content();
+  }
+
+  .sender {
+    text-align: right;
+    color: var(--muted);
+    font-size: 8.5pt;
+    line-height: 1.5;
+  }
+  .sender .name {
+    color: var(--ink);
+    font-weight: 600;
+    string-set: sender content();
+  }
+
+  .meta {
+    display: flex;
+    gap: 10mm;
+    margin: 4mm 0 6mm;
+    font-size: 8pt;
+    color: var(--muted);
+  }
+  .meta b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- key figures ---------- */
+  .kpis {
+    display: flex;
+    gap: 4mm;
+    margin-bottom: 8mm;
+  }
+  .kpi {
+    flex: 1;
+    padding: 3.5mm 4.5mm;
+    background: var(--zebra);
+    border-radius: 2mm;
+  }
+  .kpi.primary { background: var(--accent-soft); }
+  .kpi .label {
+    font-size: 7pt;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .kpi .value {
+    font-size: 16pt;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin-top: 1mm;
+    white-space: nowrap;
+  }
+  .kpi.primary .value { color: var(--accent); }
+  .kpi .unit {
+    font-size: 9pt;
+    font-weight: 500;
+    color: var(--muted);
+    margin-left: 0.6mm;
+  }
+
+  /* ---------- table ---------- */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  thead { display: table-header-group; }
+  tr { page-break-inside: avoid; }
+
+  th {
+    /* No uppercase here: column labels carry units such as kWh. */
+    font-size: 7.5pt;
+    font-weight: 600;
+    color: var(--muted);
+    text-align: left;
+    padding: 0 2.5mm 2mm;
+    border-bottom: 1pt solid var(--ink);
+    vertical-align: bottom;
+  }
+
+  td {
+    padding: 1.8mm 2.5mm;
+    border-bottom: 0.5pt solid var(--line);
+    vertical-align: top;
+    white-space: nowrap;
+  }
+  tbody tr:nth-child(even) td { background: var(--zebra); }
+
+  th:first-child, td:first-child { padding-left: 1.5mm; }
+  th:last-child,  td:last-child  { padding-right: 1.5mm; }
+
+  .r { text-align: right; }
+  .time { color: var(--muted); margin-left: 0.8mm; }
+
+  /* Grand total: a plain row group after the body, so it appears once at
+     the end instead of repeating on every page like a tfoot would. */
+  tbody.totals td {
+    border-top: 1pt solid var(--ink);
+    border-bottom: none;
+    font-weight: 700;
+    padding-top: 2.5mm;
+    background: none;
+  }
+
+  .empty {
+    text-align: center;
+    color: var(--muted);
+    padding: 8mm 0;
+    white-space: normal;
+  }
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div>
+    <p class="eyebrow">{{ T.title }}</p>
+    <h1>{{ period }}</h1>
+  </div>
+  <div class="sender">
+    <div class="name">{{ sender.name }}</div>
+    {% if sender.street %}<div>{{ sender.street }}</div>{% endif %}
+    {% if sender.city %}<div>{{ sender.city }}</div>{% endif %}
+  </div>
+</header>
+
+<div class="meta">
+  <span>{{ T.period }}: <b>{{ period }}</b></span>
+  <span>{{ T.created }}: <b>{{ date(creation_date) }}</b></span>
+</div>
+
+<section class="kpis">
+  <div class="kpi">
+    <div class="label">{{ T.sessions }}</div>
+    <div class="value">{{ charges|length }}</div>
+  </div>
+  <div class="kpi">
+    <div class="label">{{ T.energy }}</div>
+    <div class="value">{{ total_energy }}<span class="unit">kWh</span></div>
+  </div>
+  <div class="kpi primary">
+    <div class="label">{{ T.cost }}</div>
+    <div class="value">{{ total_price }}<span class="unit">€</span></div>
+  </div>
+</section>
+
+<table>
+  <thead>
+    <tr>
+      {%- for c in columns %}
+      <th{% if c.align == 'right' %} class="r"{% endif %}>{{ c.label }}</th>
+      {%- endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {%- for charge in charges %}
+    <tr>
+      {%- for c in columns %}
+      <td{% if c.align == 'right' %} class="r"{% endif %}>{{ cell(c, charge[c.id]|string) }}</td>
+      {%- endfor %}
+    </tr>
+    {%- else %}
+    <tr><td class="empty" colspan="{{ columns|length }}">{{ T.empty }}</td></tr>
+    {%- endfor %}
+  </tbody>
+  {%- if charges %}
+  <tbody class="totals">
+    <tr>
+      {%- for c in columns %}
+      <td{% if c.align == 'right' %} class="r"{% endif %}>
+        {%- if c.id == 'energy' %}{{ total_energy }}
+        {%- elif c.id == 'price' %}{{ total_price }}
+        {%- elif loop.first %}{{ T.total }}
+        {%- endif -%}
+      </td>
+      {%- endfor %}
+    </tr>
+  </tbody>
+  {%- endif %}
+</table>
+
+</body>
+</html>

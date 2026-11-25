@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         git \
         locales \
         fonts-dejavu-core \
+        fonts-inter \
         libpango-1.0-0 \
         libharfbuzz0b \
         libharfbuzz-subset0 \
@@ -30,6 +31,9 @@ RUN python3 /tmp/patch_upstream.py generate_pdf_report.py \
     && rm /tmp/patch_upstream.py
 
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Own report layout (shared by both languages) replacing upstream's templates.
+COPY templates/ /app/
 
 # The script writes PDFs to ./output relative to its working directory;
 # point that at the Home Assistant "share" folder so reports are reachable

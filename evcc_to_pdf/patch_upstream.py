@@ -50,7 +50,7 @@ PATCHES = [
         if 'chargeDuration' in raw.columns:
             td = pd.to_timedelta(pd.to_numeric(raw['chargeDuration'], errors='coerce'), unit='ns')
             df['duration'] = td.apply(
-                lambda x: f"{int(x.total_seconds() // 3600)}h {int(x.total_seconds() % 3600 // 60)}m"
+                lambda x: f"{int(x.total_seconds() // 3600)}h {int(x.total_seconds() % 3600 // 60):02d}m"
                 if pd.notnull(x) else "N/A"
             )
         else:
