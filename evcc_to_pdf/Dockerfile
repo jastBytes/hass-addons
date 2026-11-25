@@ -30,6 +30,12 @@ RUN git clone https://github.com/MaizeShark/evcc-to-PDF.git . \
 RUN sed -i -E "s/pd\.to_datetime\(df\['(start|end)_time'\], errors='coerce'\)/pd.to_datetime(df['\1_time'], errors='coerce', utc=True).dt.tz_convert(os.environ.get('TZ') or 'UTC')/" generate_pdf_report.py \
     && test "$(grep -c "utc=True).dt.tz_convert(os.environ.get('TZ') or 'UTC')" generate_pdf_report.py)" -eq 2
 
+# Upstream formats the session duration from Timedelta.components.hours, which
+# drops whole days, so a car plugged in for 36 h showed as "12h 0m". Add the
+# days back in as hours.
+RUN sed -i 's/{x\.components\.hours}h/{x.components.days * 24 + x.components.hours}h/' generate_pdf_report.py \
+    && grep -q 'x.components.days \* 24 + x.components.hours' generate_pdf_report.py
+
 RUN pip install --no-cache-dir -r requirements.txt
 
 # The script writes PDFs to ./output relative to its working directory;
