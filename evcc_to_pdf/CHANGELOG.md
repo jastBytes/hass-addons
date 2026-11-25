@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.2 - 2026-11-25
+
+- Fix `ValueError: Mixed timezones detected` for months that span a
+  daylight saving time change (e.g. October 2026). Session times are now
+  parsed as UTC and shown in the Home Assistant time zone.
+- Fix session durations over 24 hours in the report. Whole days were
+  dropped, so 36 hours showed as `12h 0m`.
+
 ## 1.1.1 - 2026-09-11
 
 - Fix `FileExistsError: [Errno 17] File exists: './output'` on every report
