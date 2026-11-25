@@ -22,6 +22,14 @@ RUN git clone https://github.com/MaizeShark/evcc-to-PDF.git . \
     && git checkout "${EVCC_TO_PDF_REF}" \
     && rm -rf .git
 
+# evcc reports session times with their UTC offset, so a month spanning a
+# DST change mixes +02:00 and +01:00 and pd.to_datetime() raises "Mixed
+# timezones detected". Parse as UTC and convert to the Home Assistant time
+# zone (the Supervisor sets TZ). The grep fails the build if the patch no
+# longer applies after bumping EVCC_TO_PDF_REF.
+RUN sed -i -E "s/pd\.to_datetime\(df\['(start|end)_time'\], errors='coerce'\)/pd.to_datetime(df['\1_time'], errors='coerce', utc=True).dt.tz_convert(os.environ.get('TZ') or 'UTC')/" generate_pdf_report.py \
+    && test "$(grep -c "utc=True).dt.tz_convert(os.environ.get('TZ') or 'UTC')" generate_pdf_report.py)" -eq 2
+
 RUN pip install --no-cache-dir -r requirements.txt
 
 # The script writes PDFs to ./output relative to its working directory;
