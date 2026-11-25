@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         fonts-dejavu-core \
         libpango-1.0-0 \
         libharfbuzz0b \
+        libharfbuzz-subset0 \
         libpangoft2-1.0-0 \
     && sed -i -E 's/^# (de_DE\.UTF-8|en_US\.UTF-8|en_GB\.UTF-8|fr_FR\.UTF-8|es_ES\.UTF-8|it_IT\.UTF-8|nl_NL\.UTF-8) UTF-8/\1 UTF-8/' /etc/locale.gen \
     && locale-gen \
@@ -22,19 +23,11 @@ RUN git clone https://github.com/MaizeShark/evcc-to-PDF.git . \
     && git checkout "${EVCC_TO_PDF_REF}" \
     && rm -rf .git
 
-# evcc reports session times with their UTC offset, so a month spanning a
-# DST change mixes +02:00 and +01:00 and pd.to_datetime() raises "Mixed
-# timezones detected". Parse as UTC and convert to the Home Assistant time
-# zone (the Supervisor sets TZ). The grep fails the build if the patch no
-# longer applies after bumping EVCC_TO_PDF_REF.
-RUN sed -i -E "s/pd\.to_datetime\(df\['(start|end)_time'\], errors='coerce'\)/pd.to_datetime(df['\1_time'], errors='coerce', utc=True).dt.tz_convert(os.environ.get('TZ') or 'UTC')/" generate_pdf_report.py \
-    && test "$(grep -c "utc=True).dt.tz_convert(os.environ.get('TZ') or 'UTC')" generate_pdf_report.py)" -eq 2
-
-# Upstream formats the session duration from Timedelta.components.hours, which
-# drops whole days, so a car plugged in for 36 h showed as "12h 0m". Add the
-# days back in as hours.
-RUN sed -i 's/{x\.components\.hours}h/{x.components.days * 24 + x.components.hours}h/' generate_pdf_report.py \
-    && grep -q 'x.components.days \* 24 + x.components.hours' generate_pdf_report.py
+# Local fixes to the upstream script (DST time zones, real charging time);
+# the build fails if a patch no longer matches after bumping the ref.
+COPY patch_upstream.py /tmp/patch_upstream.py
+RUN python3 /tmp/patch_upstream.py generate_pdf_report.py \
+    && rm /tmp/patch_upstream.py
 
 RUN pip install --no-cache-dir -r requirements.txt
 
